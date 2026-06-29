@@ -94,11 +94,20 @@
 
   <div class="banner" id="banner"></div>
 
+  <!-- Selector de año -->
+  <div class="row" style="margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:14px;color:var(--muted)">📅 Año</span>
+      <select id="selAnio" onchange="render()" style="width:auto;font-weight:700"></select>
+    </div>
+    <span class="legend" id="anioInfo"></span>
+  </div>
+
   <!-- KPIs -->
   <div class="kpis">
-    <div class="kpi"><div class="label">📈 Ingresos (mes)</div><div class="val blue" id="k-ing">—</div></div>
-    <div class="kpi"><div class="label">📉 Egresos (mes)</div><div class="val red" id="k-egr">—</div></div>
-    <div class="kpi"><div class="label">🐖 Ahorro (mes)</div><div class="val green" id="k-aho">—</div></div>
+    <div class="kpi"><div class="label">📈 <span id="k-ing-l">Ingresos</span></div><div class="val blue" id="k-ing">—</div></div>
+    <div class="kpi"><div class="label">📉 <span id="k-egr-l">Egresos</span></div><div class="val red" id="k-egr">—</div></div>
+    <div class="kpi"><div class="label">🐖 <span id="k-aho-l">Ahorro</span></div><div class="val green" id="k-aho">—</div></div>
     <div class="kpi"><div class="label">🎯 Tasa de ahorro</div><div class="val" id="k-tasa">—</div></div>
   </div>
 
@@ -299,18 +308,46 @@ function monthsSorted(){return [...new Set(MOV.map(m=>monthKey(m.fecha)))].sort(
 
 function render(){
   setTipo(TIPO);
-  // KPIs del mes actual
-  const mk=thisMonthKey();
-  const ing=MOV.filter(m=>m.tipo==='Ingreso'&&monthKey(m.fecha)===mk).reduce((a,m)=>a+m.monto,0);
-  const egr=MOV.filter(m=>m.tipo==='Egreso'&&monthKey(m.fecha)===mk).reduce((a,m)=>a+m.monto,0);
-  const aho=ing-egr, tasa=ing>0?aho/ing*100:0;
-  document.getElementById('k-ing').textContent=fmt(ing);
-  document.getElementById('k-egr').textContent=fmt(egr);
-  const ka=document.getElementById('k-aho');ka.textContent=fmt(aho);ka.className='val '+(aho>=0?'green':'red');
-  const kt=document.getElementById('k-tasa');kt.textContent=tasa.toFixed(0)+'%';kt.className='val '+(tasa>=20?'green':tasa>=0?'blue':'red');
 
-  // selector meses
-  const ms=monthsSorted();
+  // ---- Selector de AÑO (auto: años con datos + año actual) ----
+  const ySel=document.getElementById('selAnio');
+  const curY=String(new Date().getFullYear());
+  let years=[...new Set(MOV.map(m=>(m.fecha||'').slice(0,4)).filter(Boolean))];
+  if(!years.includes(curY))years.push(curY);
+  years.sort((a,b)=>b.localeCompare(a));
+  const prevY=(ySel.value&&years.includes(ySel.value))?ySel.value:curY;
+  ySel.innerHTML=years.map(y=>`<option value="${y}">${y}</option>`).join('');
+  ySel.value=prevY;
+  const year=ySel.value, isCur=year===curY;
+
+  // meses del año seleccionado (con datos)
+  const ms=monthsSorted().filter(k=>k.slice(0,4)===year);
+
+  // ---- KPIs ----
+  let kIng,kEgr,suf;
+  if(isCur){
+    const mk=thisMonthKey();
+    kIng=MOV.filter(m=>m.tipo==='Ingreso'&&monthKey(m.fecha)===mk).reduce((a,m)=>a+m.monto,0);
+    kEgr=MOV.filter(m=>m.tipo==='Egreso'&&monthKey(m.fecha)===mk).reduce((a,m)=>a+m.monto,0);
+    suf='(mes)';
+  } else {
+    const n=ms.length||1;
+    kIng=ms.reduce((a,k)=>a+MOV.filter(m=>m.tipo==='Ingreso'&&monthKey(m.fecha)===k).reduce((x,m)=>x+m.monto,0),0)/n;
+    kEgr=ms.reduce((a,k)=>a+MOV.filter(m=>m.tipo==='Egreso'&&monthKey(m.fecha)===k).reduce((x,m)=>x+m.monto,0),0)/n;
+    suf='(prom '+year+')';
+  }
+  const kAho=kIng-kEgr, tasa=kIng>0?kAho/kIng*100:0;
+  document.getElementById('k-ing-l').textContent='Ingresos '+suf;
+  document.getElementById('k-egr-l').textContent='Egresos '+suf;
+  document.getElementById('k-aho-l').textContent='Ahorro '+suf;
+  document.getElementById('k-ing').textContent=fmt(kIng);
+  document.getElementById('k-egr').textContent=fmt(kEgr);
+  const ka=document.getElementById('k-aho');ka.textContent=fmt(kAho);ka.className='val '+(kAho>=0?'green':'red');
+  const kt=document.getElementById('k-tasa');kt.textContent=tasa.toFixed(0)+'%';kt.className='val '+(tasa>=20?'green':tasa>=0?'blue':'red');
+  document.getElementById('anioInfo').textContent=ms.length?(ms.length+' mes(es) con datos'):'sin datos en '+year;
+
+  // selector meses (del año elegido)
+  const mk=thisMonthKey();
   const sel=document.getElementById('selMes');
   sel.innerHTML='<option value="ALL">Todos (promedio)</option>'+ms.map(k=>`<option value="${k}">${monthLabel(k)}</option>`).join('');
   sel.value=ms.includes(mk)?mk:'ALL';
@@ -319,7 +356,7 @@ function render(){
   dibujarIngEgr(ms);
   dibujarCategorias();
   dibujarEvolucion(ms);
-  dibujarConsejo();
+  dibujarConsejo(ms,year);
 }
 
 function listarMovimientos(){
@@ -359,10 +396,12 @@ function dibujarIngEgr(ms){
 
 function dibujarCategorias(){
   const v=document.getElementById('selMes').value;
-  const egr=MOV.filter(m=>m.tipo==='Egreso'&&(v==='ALL'||monthKey(m.fecha)===v));
+  const year=document.getElementById('selAnio').value;
+  const ms=monthsSorted().filter(k=>k.slice(0,4)===year);
+  const egr=MOV.filter(m=>m.tipo==='Egreso'&&(v==='ALL'?monthKey(m.fecha).slice(0,4)===year:monthKey(m.fecha)===v));
   const tot={};egr.forEach(m=>tot[m.categoria]=(tot[m.categoria]||0)+m.monto);
   let pairs=Object.entries(tot);
-  if(v==='ALL'){const n=monthsSorted().length||1;pairs=pairs.map(([c,x])=>[c,x/n]);}
+  if(v==='ALL'){const n=ms.length||1;pairs=pairs.map(([c,x])=>[c,x/n]);}
   pairs=pairs.filter(p=>p[1]>0).sort((a,b)=>b[1]-a[1]);
   charts.cat&&charts.cat.destroy();
   if(!pairs.length){const ctx=document.getElementById('chCat').getContext('2d');ctx.clearRect(0,0,9999,9999);return;}
@@ -381,12 +420,13 @@ function dibujarEvolucion(ms){
     options:baseOpts()});
 }
 
-function dibujarConsejo(){
-  const ms=monthsSorted();const n=ms.length||1;
-  const ingT=MOV.filter(m=>m.tipo==='Ingreso').reduce((a,m)=>a+m.monto,0)/n;
-  const egrT=MOV.filter(m=>m.tipo==='Egreso').reduce((a,m)=>a+m.monto,0)/n;
+function dibujarConsejo(ms,year){
+  ms=ms||monthsSorted();const n=ms.length||1;
+  const inYear=m=>ms.includes(monthKey(m.fecha));
+  const ingT=MOV.filter(m=>m.tipo==='Ingreso'&&inYear(m)).reduce((a,m)=>a+m.monto,0)/n;
+  const egrT=MOV.filter(m=>m.tipo==='Egreso'&&inYear(m)).reduce((a,m)=>a+m.monto,0)/n;
   const aho=ingT-egrT, tasa=ingT>0?aho/ingT*100:0;
-  const tot={};MOV.filter(m=>m.tipo==='Egreso').forEach(m=>tot[m.categoria]=(tot[m.categoria]||0)+m.monto/n);
+  const tot={};MOV.filter(m=>m.tipo==='Egreso'&&inYear(m)).forEach(m=>tot[m.categoria]=(tot[m.categoria]||0)+m.monto/n);
   const top=Object.entries(tot).sort((a,b)=>b[1]-a[1]).slice(0,3);
   const need=ingT*.5,want=ingT*.3,save=ingT*.2,metaMonto=ingT*.2;
   let estado;
