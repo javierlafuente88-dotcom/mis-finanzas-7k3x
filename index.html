@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Mis Finanzas">
+<meta name="theme-color" content="#0f172a">
+<title>Mis Finanzas</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0f172a; --card:#1e293b; --card2:#273449; --ink:#e2e8f0; --muted:#94a3b8;
+    --green:#22c55e; --red:#ef4444; --blue:#38bdf8; --amber:#f59e0b; --violet:#a78bfa;
+    --line:#334155;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;padding:16px;padding-bottom:48px}
+  .wrap{max-width:920px;margin:0 auto}
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px;flex-wrap:wrap}
+  h1{font-size:22px;margin:0;font-weight:700}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 18px}
+  button.refresh{background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:8px 14px;font-size:14px;cursor:pointer}
+  button.refresh:active{transform:scale(.97)}
+  .banner{background:#3b2f12;border:1px solid #6b5413;color:#fcd34d;padding:10px 14px;border-radius:12px;font-size:13px;margin-bottom:16px;display:none}
+  .kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:18px}
+  @media(min-width:640px){.kpis{grid-template-columns:repeat(4,1fr)}}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px}
+  .kpi .label{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  .kpi .val{font-size:21px;font-weight:700;margin-top:6px}
+  .kpi .val.green{color:var(--green)} .kpi .val.red{color:var(--red)} .kpi .val.blue{color:var(--blue)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:16px}
+  .card h2{font-size:16px;margin:0 0 4px}
+  .card .hint{color:var(--muted);font-size:12px;margin:0 0 12px}
+  .chart-box{position:relative;height:300px}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+  select{background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px}
+  .advice p{margin:0 0 10px;font-size:14px;line-height:1.5}
+  .advice strong{color:#fff}
+  .bar50{display:flex;height:26px;border-radius:8px;overflow:hidden;margin:10px 0 6px;border:1px solid var(--line)}
+  .bar50 div{display:flex;align-items:center;justify-content:center;font-size:11px;color:#0b1220;font-weight:700;white-space:nowrap}
+  .seg-need{background:#60a5fa} .seg-want{background:#fbbf24} .seg-save{background:#34d399}
+  .legend{font-size:12px;color:var(--muted)}
+  .pill{display:inline-block;background:var(--card2);border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px;margin:2px 4px 2px 0}
+  footer{color:var(--muted);font-size:12px;text-align:center;margin-top:24px;line-height:1.6}
+  code{background:var(--card2);padding:1px 6px;border-radius:6px;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>💰 Mis Finanzas</h1>
+    <button class="refresh" onclick="cargar()">↻ Actualizar</button>
+  </header>
+  <p class="sub" id="sub">Cargando…</p>
+
+  <div class="banner" id="banner"></div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="label">Ingreso promedio</div><div class="val blue" id="k-ing">—</div></div>
+    <div class="kpi"><div class="label">Egreso promedio</div><div class="val red" id="k-egr">—</div></div>
+    <div class="kpi"><div class="label">Ahorro promedio / mes</div><div class="val green" id="k-aho">—</div></div>
+    <div class="kpi"><div class="label">Tasa de ahorro</div><div class="val" id="k-tasa">—</div></div>
+  </div>
+
+  <div class="card">
+    <h2>Ingresos vs. Egresos por mes</h2>
+    <p class="hint">Las barras muestran cuánto entró y cuánto salió. La línea es lo que te quedó (ahorro del mes).</p>
+    <div class="chart-box"><canvas id="chIngEgr"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <div><h2 style="margin-bottom:0">¿En qué se va la plata?</h2></div>
+      <select id="selMes" onchange="dibujarCategorias()"></select>
+    </div>
+    <p class="hint">Egresos agrupados por categoría. Cambiá el mes con el selector.</p>
+    <div class="chart-box"><canvas id="chCat"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>Evolución del ahorro y la inversión</h2>
+    <p class="hint">La línea verde es tu ahorro acumulado mes a mes. La violeta es el saldo de tu inversión.</p>
+    <div class="chart-box"><canvas id="chEvo"></canvas></div>
+  </div>
+
+  <div class="card advice" id="advice">
+    <h2>📌 ¿Cuánto te queda para ahorrar?</h2>
+    <div id="adviceBody"></div>
+  </div>
+
+  <footer>
+    Hoja conectada de solo lectura · Se actualiza al tocar <b>Actualizar</b><br>
+    Tip: en el celular, abrí este link y elegí <b>"Agregar a pantalla de inicio"</b> para usarlo como app.
+  </footer>
+</div>
+
+<script>
+/* ====== CONFIG: pegá acá el link CSV publicado de tu Google Sheet ====== */
+const CONFIG = {
+  // Reemplazá esto por el link que te da "Archivo > Compartir > Publicar en la web" (formato CSV).
+  csvUrl: "PEGAR_LINK_CSV_AQUI"
+};
+
+/* ====== Datos de ejemplo (se usan si todavía no conectaste la hoja) ====== */
+const DEMO = `Mes,Facturacion,Ingresos extra,Servicios y Hogar,Alimentacion,Entretenimiento,Transporte,Salud,Bancos y Tarjetas,Impuestos,Oficina,Otros,Saldo inversion
+Enero,850000,27025,47487,12740,15825,7377,4652,30050,21400,4514,8000,4977668
+Febrero,910000,3900,45836,12760,15740,6812,4929,51843,22466,2000,5260,5200000
+Marzo,880000,1843,13044,27887,10800,5502,6379,56000,7209,6640,3700,5400000
+Abril,1050000,5867,11742,32135,4850,5928,5252,4000,8240,5960,9857,5600000
+Mayo,1180000,1843,9500,26310,14120,8200,3872,12000,14424,4490,6500,5800000
+Junio,1240000,1843,11000,27972,15530,9000,4002,18000,10225,24019,9250,6000000`;
+
+const PALETTE = ['#38bdf8','#f59e0b','#a78bfa','#34d399','#fb7185','#facc15','#22d3ee','#c084fc','#f97316','#4ade80','#94a3b8'];
+let DATA = [], CATS = [], charts = {};
+
+const norm = s => (s||'').toString().trim().toLowerCase()
+  .normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]','g'),'');
+const SPECIAL = { facturacion:'fact', 'ingresos extra':'extra', 'saldo inversion':'saldo' };
+
+function parseCSV(text){
+  const rows=[]; let i=0,f='',row=[],q=false;
+  while(i<text.length){const c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){f+='"';i++;} else q=false;} else f+=c; }
+    else { if(c==='"')q=true; else if(c===','){row.push(f);f='';}
+      else if(c==='\n'){row.push(f);rows.push(row);row=[];f='';}
+      else if(c==='\r'){} else f+=c; }
+    i++; }
+  if(f.length||row.length){row.push(f);rows.push(row);}
+  return rows.filter(r=>r.some(x=>x.trim()!==''));
+}
+function toNum(v){
+  if(v==null) return 0;
+  let s=v.toString().trim().replace(/[$\s]/g,'');
+  if(s===''||s==='#REF!') return 0;
+  // soporta formato AR (1.234,56) y US (1,234.56)
+  if(s.indexOf(',')>-1 && s.indexOf('.')>-1){
+    if(s.lastIndexOf(',')>s.lastIndexOf('.')) s=s.replace(/\./g,'').replace(',', '.');
+    else s=s.replace(/,/g,'');
+  } else if(s.indexOf(',')>-1){ s=s.replace(',', '.'); }
+  const n=parseFloat(s); return isNaN(n)?0:n;
+}
+const fmt = n => new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(n||0);
+const fmtK = n => {n=n||0; const a=Math.abs(n);
+  if(a>=1e6) return (n/1e6).toFixed(1).replace('.0','')+'M';
+  if(a>=1e3) return Math.round(n/1e3)+'k'; return Math.round(n).toString();};
+
+function buildModel(rows){
+  const header=rows[0].map(h=>h.trim());
+  const keys=header.map(h=>{const k=norm(h); return SPECIAL[k]||('cat:'+h.trim());});
+  CATS = header.filter((h,idx)=>idx>0 && keys[idx].startsWith('cat:')).map(h=>h.trim());
+  DATA = rows.slice(1).map(r=>{
+    const o={mes:(r[0]||'').trim(), fact:0, extra:0, saldo:null, cats:{}, egresos:0};
+    keys.forEach((k,idx)=>{
+      if(idx===0) return;
+      const v=toNum(r[idx]);
+      if(k==='fact')o.fact=v; else if(k==='extra')o.extra=v;
+      else if(k==='saldo')o.saldo=v;
+      else if(k.startsWith('cat:')){const name=k.slice(4); o.cats[name]=v; o.egresos+=v;}
+    });
+    o.ingresos=o.fact+o.extra; o.ahorro=o.ingresos-o.egresos; return o;
+  }).filter(o=>o.mes);
+}
+
+async function cargar(){
+  const sub=document.getElementById('sub'), banner=document.getElementById('banner');
+  let text=null, live=false;
+  if(CONFIG.csvUrl && CONFIG.csvUrl!=='PEGAR_LINK_CSV_AQUI'){
+    try{ const res=await fetch(CONFIG.csvUrl+(CONFIG.csvUrl.includes('?')?'&':'?')+'t='+Date.now());
+      if(res.ok){ text=await res.text(); live=true; } }catch(e){}
+  }
+  if(!text){ text=DEMO;
+    banner.style.display='block';
+    banner.innerHTML='⚠️ Estás viendo <b>datos de ejemplo</b>. Cuando pegues el link CSV de tu hoja en el archivo, vas a ver tus números reales.';
+  } else { banner.style.display='none'; }
+  buildModel(parseCSV(text));
+  const now=new Date().toLocaleString('es-AR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+  sub.textContent=(live?'Datos de tu hoja · ':'Datos de ejemplo · ')+'Actualizado '+now;
+  render();
+}
+
+function avg(arr){return arr.length? arr.reduce((a,b)=>a+b,0)/arr.length:0;}
+
+function render(){
+  const ing=avg(DATA.map(d=>d.ingresos)), egr=avg(DATA.map(d=>d.egresos)), aho=ing-egr;
+  document.getElementById('k-ing').textContent=fmt(ing);
+  document.getElementById('k-egr').textContent=fmt(egr);
+  const kaho=document.getElementById('k-aho'); kaho.textContent=fmt(aho);
+  kaho.className='val '+(aho>=0?'green':'red');
+  const tasa= ing>0? (aho/ing*100):0;
+  const kt=document.getElementById('k-tasa'); kt.textContent=tasa.toFixed(0)+'%';
+  kt.className='val '+(tasa>=20?'green':tasa>=0?'blue':'red');
+
+  // selector de meses
+  const sel=document.getElementById('selMes');
+  sel.innerHTML='<option value="-1">Todos los meses (promedio)</option>'+
+    DATA.map((d,i)=>`<option value="${i}">${d.mes}</option>`).join('');
+  sel.value='-1';
+
+  dibujarIngEgr(); dibujarCategorias(); dibujarEvolucion(); dibujarConsejo(ing,egr,aho,tasa);
+}
+
+function baseOpts(){return {responsive:true,maintainAspectRatio:false,
+  plugins:{legend:{labels:{color:'#cbd5e1',font:{size:12}}},
+    tooltip:{callbacks:{label:c=>c.dataset.label+': '+fmt(c.parsed.y!=null?c.parsed.y:c.parsed)}}},
+  scales:{x:{ticks:{color:'#94a3b8'},grid:{color:'#1e293b'}},
+    y:{ticks:{color:'#94a3b8',callback:v=>fmtK(v)},grid:{color:'#1e293b'}}}};}
+
+function dibujarIngEgr(){
+  charts.ie && charts.ie.destroy();
+  charts.ie=new Chart(document.getElementById('chIngEgr'),{type:'bar',
+    data:{labels:DATA.map(d=>d.mes),datasets:[
+      {label:'Ingresos',data:DATA.map(d=>d.ingresos),backgroundColor:'#38bdf8',borderRadius:6},
+      {label:'Egresos',data:DATA.map(d=>d.egresos),backgroundColor:'#f87171',borderRadius:6},
+      {label:'Ahorro',type:'line',data:DATA.map(d=>d.ahorro),borderColor:'#34d399',backgroundColor:'#34d399',tension:.3,borderWidth:3,pointRadius:4}
+    ]},options:baseOpts()});
+}
+
+function dibujarCategorias(){
+  const idx=parseInt(document.getElementById('selMes').value);
+  let totals={};
+  CATS.forEach(c=>totals[c]=0);
+  if(idx<0){ DATA.forEach(d=>CATS.forEach(c=>totals[c]+=d.cats[c]||0));
+    CATS.forEach(c=>totals[c]/=DATA.length||1); }
+  else { const d=DATA[idx]; CATS.forEach(c=>totals[c]=d.cats[c]||0); }
+  const pairs=CATS.map(c=>[c,totals[c]]).filter(p=>p[1]>0).sort((a,b)=>b[1]-a[1]);
+  charts.cat && charts.cat.destroy();
+  charts.cat=new Chart(document.getElementById('chCat'),{type:'doughnut',
+    data:{labels:pairs.map(p=>p[0]),datasets:[{data:pairs.map(p=>p[1]),
+      backgroundColor:PALETTE,borderColor:'#1e293b',borderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'55%',
+      plugins:{legend:{position:'bottom',labels:{color:'#cbd5e1',font:{size:11},boxWidth:12}},
+        tooltip:{callbacks:{label:c=>c.label+': '+fmt(c.parsed)}}}}});
+}
+
+function dibujarEvolucion(){
+  let acum=0; const ah=DATA.map(d=>{acum+=d.ahorro;return acum;});
+  const hasSaldo=DATA.some(d=>d.saldo!=null);
+  const ds=[{label:'Ahorro acumulado',data:ah,borderColor:'#34d399',backgroundColor:'rgba(52,211,153,.15)',fill:true,tension:.3,borderWidth:3,pointRadius:3,yAxisID:'y'}];
+  if(hasSaldo) ds.push({label:'Saldo inversión',data:DATA.map(d=>d.saldo),borderColor:'#a78bfa',backgroundColor:'#a78bfa',tension:.3,borderWidth:3,pointRadius:3,yAxisID:'y2'});
+  const opt=baseOpts();
+  if(hasSaldo){opt.scales.y2={position:'right',ticks:{color:'#a78bfa',callback:v=>fmtK(v)},grid:{drawOnChartArea:false}};}
+  charts.evo && charts.evo.destroy();
+  charts.evo=new Chart(document.getElementById('chEvo'),{type:'line',data:{labels:DATA.map(d=>d.mes),datasets:ds},options:opt});
+}
+
+function dibujarConsejo(ing,egr,aho,tasa){
+  // Top 3 categorías de gasto (promedio)
+  let t={}; CATS.forEach(c=>t[c]=0);
+  DATA.forEach(d=>CATS.forEach(c=>t[c]+=d.cats[c]||0));
+  const top=CATS.map(c=>[c,t[c]/(DATA.length||1)]).sort((a,b)=>b[1]-a[1]).slice(0,3);
+  const meta=0.20, metaMonto=ing*meta;
+  const need=ing*0.5, want=ing*0.3, save=ing*0.2;
+  const b=document.getElementById('adviceBody');
+  let estado, color;
+  if(tasa>=20){estado=`¡Vas muy bien! Estás ahorrando el <strong>${tasa.toFixed(0)}%</strong> de lo que entra.`;}
+  else if(tasa>=0){estado=`Estás ahorrando el <strong>${tasa.toFixed(0)}%</strong>. La meta sana es <strong>20%</strong>: te faltan <strong>${fmt(metaMonto-aho)}</strong> por mes para llegar.`;}
+  else {estado=`Cuidado: en promedio gastás más de lo que entra (déficit de <strong>${fmt(-aho)}</strong> por mes).`;}
+  b.innerHTML=`
+    <p>${estado}</p>
+    <p>En promedio entran <strong>${fmt(ing)}</strong> y salen <strong>${fmt(egr)}</strong>, así que te quedan
+       <strong style="color:${aho>=0?'#34d399':'#f87171'}">${fmt(aho)}</strong> por mes para ahorrar.</p>
+    <p style="margin-bottom:4px"><strong>Regla simple 50 / 30 / 20</strong> aplicada a tu ingreso:</p>
+    <div class="bar50">
+      <div class="seg-need" style="width:50%">Necesidades ${fmt(need)}</div>
+      <div class="seg-want" style="width:30%">Gustos ${fmt(want)}</div>
+      <div class="seg-save" style="width:20%">Ahorro ${fmt(save)}</div>
+    </div>
+    <p class="legend">50% gastos fijos (alquiler, servicios, comida, impuestos) · 30% gustos (salidas, ropa) · 20% ahorro/inversión.</p>
+    <p style="margin-top:12px"><strong>Dónde más se te va:</strong>
+      ${top.map(p=>`<span class="pill">${p[0]}: ${fmt(p[1])}</span>`).join('')}</p>
+    <p class="legend">Si querés subir tu ahorro, mirá primero esas 3 categorías: bajar un 10% ahí ya suma
+      <strong>${fmt(top.reduce((a,p)=>a+p[1],0)*0.1)}</strong> por mes.</p>`;
+}
+
+cargar();
+</script>
+</body>
+</html>
