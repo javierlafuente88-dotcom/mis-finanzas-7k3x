@@ -260,8 +260,13 @@ async function cargar(){
     document.getElementById('sub').textContent='Conectado · '+now;
     render();
   }catch(e){
-    setBanner('err','❌ No pude leer la planilla. Revisá la URL en ⚙️ y que el Web App esté desplegado para "Cualquier persona". Detalle: '+e.message);
-    document.getElementById('sub').textContent='Error de conexión';
+    var hint='';
+    if(/\/spreadsheets\//.test(API_URL)) hint=' ⚠️ Pegaste el link de la PLANILLA. Necesito la URL del <b>Apps Script</b>, que termina en <b>/exec</b> (mirá las instrucciones).';
+    else if(!/\/exec(\?|$)/.test(API_URL)) hint=' La URL debería terminar en <b>/exec</b>.';
+    else hint=' Revisá que el Web App esté desplegado para "Cualquier persona".';
+    setBanner('err','❌ No pude conectar con tu planilla.'+hint+' <br><span style="opacity:.7">(detalle técnico: '+e.message+')</span>');
+    MOV=DEMO.slice(); render();
+    document.getElementById('sub').textContent='Sin conectar · mostrando ejemplo';
   }
 }
 
